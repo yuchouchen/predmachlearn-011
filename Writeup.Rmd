@@ -4,7 +4,7 @@ author: "YuChou Chen"
 date: "Sunday, February 22, 2015"
 output: html_document
 ---
-
+*****
 #### Executive Summary
 
 The goal of this project is to predict the manner, the "classe" variable, in which 
@@ -18,6 +18,7 @@ are creened out the columns with all NA or lots of blank without through
 createDataPartitioning and pre-processing. Another used cross validation method 
 with 10-fold, repeated 5 times.
 
+*****
 #### Main Text
 
 In this project, data come from accelerometers on the belt, forearm, arm, and 
@@ -233,6 +234,7 @@ pred_rf_tD
 pred_wCtrl
 ```
 
+*****
 #### **Reference**
 
 Research paper:
