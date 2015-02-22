@@ -1,2 +1,2 @@
 #### To see the Compiled HTML output, please visit:
-http://yuchouchen.github.io/
+https://github.com/yuchouchen/yuchouchen.github.io/index.html
