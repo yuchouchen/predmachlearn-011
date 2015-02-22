@@ -1,0 +1,252 @@
+---
+title: "WriteUp of Practical Machine Learning course"
+author: "YuChou Chen"
+date: "Sunday, February 22, 2015"
+output: html_document
+---
+
+#### Executive Summary
+
+The goal of this project is to predict the manner, the "classe" variable, in which 
+6 participants did the exercise. And the result of two prediction models to 
+predict 20 different test cases is:
+
+  **Output**: B A B A A E D B A A B C B A E E A B B B
+  
+One of the prediction models using random forest method used all train data that 
+are creened out the columns with all NA or lots of blank without through 
+createDataPartitioning and pre-processing. Another used cross validation method 
+with 10-fold, repeated 5 times.
+
+#### Main Text
+
+In this project, data come from accelerometers on the belt, forearm, arm, and 
+dumbell of 6 participants. The goal of this project is to predict the manner in 
+which 6 participants did the exercise. This is the "classe" variable in the 
+training set. 
+
+##### **Data Source**
+
+The data for this project come from this source: 
+http://groupware.les.inf.puc-rio.br/har. 
+Thanks for allowing the data to be used for this assignment. 
+
+For data recording we used four 9 degrees of freedom Razor inertial measurement 
+units (IMU), which provide three-axes acceleration, gyroscope and magnetometer data 
+at a joint sampling rate of 45 Hz. 
+
+Participants were asked to perform one set of 10 repetitions of the Unilateral 
+Dumbbell Biceps Curl in five different fashions:
+
+* exactly according to the specification (Class A), 
+
+* throwingthe elbows to the front (Class B), 
+
+* lifting the dumbbell only halfway (Class C), 
+
+* lowering the dumbbell only halfway (Class D) and 
+
+* throwing the hips to the front (Class E). 
+
+Class A corresponds to the specified execution of the exercise, while the other 4 classes correspond to common mistakes.
+
+##### **Data correction of typos**
+
+Correct typos of "picth" appearing in the header row to "pitch" in two csv files.
+
+##### **Install and load packages**
+```{r, echo=FALSE, cache=TRUE}
+library(RCurl)
+library(caret)
+library(knitr)
+library(rpart)
+library(rattle)
+```
+
+The report is describing:
+ 
+1. The main steps of how to built the model are:
+
+  +  Download and read data set.
+
+```{r, cache=TRUE}
+# Download data
+trainingFile <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+testingFile <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+
+trainingURL <- getURL(trainingFile, ssl.verifypeer = FALSE)
+testingURL <- getURL(testingFile, ssl.verifypeer = FALSE)
+
+# Read data
+trainingData <- read.csv(textConnection(trainingURL), sep= ",", header = TRUE, 
+                 stringsAsFactors = FALSE)
+testingData <- read.csv(textConnection(testingURL), sep= ",", header = TRUE, 
+                 stringsAsFactors = FALSE)
+```
+
+  +  Define a excludeIndex to screen out the columns with all NA or lots of blank 
+  in data set.
+  
+```{r, cache=TRUE}
+# Data analysis
+set.seed(949)
+
+excludeIndex = c(-1:-7, -12:-36, -50:-59, -69:-83, -87:-101, -103:-112, 
+                 -125:-139, -141:-150)
+
+trainingData <- trainingData[,excludeIndex]
+testingData <- testingData[,excludeIndex]
+```
+
+  +  Convert the outcome variable, classe, to factor type.
+
+```{r, cache=TRUE}
+# convert the outcome variable, classe (53rd column), to factor
+trainingData[,53] <- sapply(trainingData[,53], as.factor) 
+testingData[,53] <- sapply(testingData[,53], as.factor)
+```
+  
+  +  Perform train function to get the predictive model.
+  
+```{r, cache=TRUE}
+# Model 1 output 
+t01 <- Sys.time()
+modFit_rf_tD <- train(classe ~ ., method="rf", data=trainingData)
+Sys.time() - t01
+
+pred_rf_tD <- predict(modFit_rf_tD, testingData)
+```
+
+2. How to use cross validation:
+
+  +  Using createDataPartition to get sub-train and sub-test data set from train 
+  data set
+
+```{r, cache=TRUE}
+inTrain <- createDataPartition(y=trainingData$classe, p=0.75, list=FALSE)
+trainingCV <- trainingData[inTrain,]
+testingCV <- trainingData[-inTrain,]
+
+trainingCV[,53] <- sapply(trainingCV[,53], as.factor) 
+testingCV[,53] <- sapply(testingCV[,53], as.factor)
+
+ncol(trainingCV)
+
+descrCorrCV <- cor(trainingCV[,-53])
+highCorrCV <- findCorrelation(descrCorrCV, 0.90)
+trainDescrCV <- trainingCV[, -highCorrCV] # remove high correlation column
+testDescrCV <- testingCV[, -highCorrCV] # remove high correlation column
+
+ncol(trainDescrCV)
+
+# Model 2 ouput
+#
+# preProcess using "pca" with thresh=0.8, 0.9, and 0.95 (default).
+# Here shows thresh=0.9 only
+xTransCV <- preProcess(trainDescrCV[,-1*ncol(trainDescrCV)], method="pca", thresh=0.9)
+trainDescrTCV <- predict(xTransCV, trainDescrCV[,-1*ncol(trainDescrCV)])
+testDescrTCV <- predict(xTransCV, testDescrCV[,-1*ncol(trainDescrCV)])
+
+trainDescrCV <- cbind(trainDescrTCV, trainDescrCV[ncol(trainDescrCV)])
+
+t02 <- Sys.time()
+modFit_rf_CV <- train(classe ~ ., method="rf", data=trainDescrCV)
+Sys.time() - t02
+
+# predict output using test dataset
+pred_rf_CV <- predict(modFit_rf_CV, testDescrTCV)
+
+# Accuracy of using cross validation based on comparing with sub-test data and 
+# predictive output based on Model 2
+sum(pred_rf_CV == testDescrCV$class)/length(pred_rf_CV)
+
+# Model 3 output
+#
+# Resampling: Cross-Validated (10 fold, repeated 5 times) 
+ctrl <- trainControl(method="repeatedcv", number=10, repeats=5, classProbs = TRUE)
+t04 <- Sys.time()
+t04
+modFit_rf_wCtrl <- train(classe ~ ., method="rf", data=trainingCV, trControl=ctrl, metric = "ROC")
+Sys.time() - t04
+
+pred_wCtrl <- predict(modFit_rf_wCtrl$finalModel, testingData)
+```
+
+3. What the expected out of sample error is:
+
+  + Out of sample error is the error rate you get on a new data set. We can estimate 
+  the expected out of sample error based on the accuracy value.
+  
+    +  Based on Model 2, the accuracy is about `r round(sum(pred_rf_CV == testDescrCV$class)/length(pred_rf_CV), 3)` using cross validation based on comparing 
+    with sub-test data and predictive output 
+    
+    +  Based on Model 3, the accuracy is about 0.993.
+
+4. Why to make the choices I did:
+
+  + Choosing the random forest and cross validation method, because one of their
+  pros is accuracy.
+  
+  + Four (4) models were evaluated:
+
+    + Model 1: using Random Forest method for all train data that are screened out 
+    the columns with all NA or lots of blank without through createDataPartitioning 
+    and pre-processing  
+  
+    + Model 2: data is createDataPartitioned for evaluating the effects of cross 
+    validation (repeats=1), and then pre-processed with removing high correlation 
+    columns and using principal component analysis method with thresh=0.8, 0.9, 
+    and 0.95. Thresh=0.9 is showed here only.
+  
+    + Model 3: data is createDataPartitioned and using resampling: Cross-Validated 
+    (10 fold, repeated 5 times).
+    
+    + Model 4: data is pre-processed with removing high correlation columns and 
+    principal component analysis using thresh=0.8. R code is not shown here because
+    one of the predictive output is different from model 1 and 3.
+  
+  + Finally, picking the output of the model, model 1, because the result of 
+  confusionMatrix is better with smaller error rate and class.error as well. The 
+  predictive output of model 3 is the same as model 1. However, the system 
+  elasped time of model 3 is the longest (more than 3.3 hours) based on my notebook.
+  
+      +  The confustionMatrix of model 1 is:
+    
+```{r, cache=TRUE}
+modFit_rf_tD$finalModel
+```
+
+      +  The confustionMatrix of model 3 is:
+
+```{r, cache=TRUE}
+modFit_rf_wCtrl$finalModel
+``` 
+
+5. Use the prediction model to predict 20 different test cases:
+
+  + **Output**: 
+```{r, cache=TRUE}
+# Predictive output of model 1
+pred_rf_tD
+
+# Predictive output of model 3
+pred_wCtrl
+```
+
+#### **Reference**
+
+Research paper:
+
+Qualitative Activity Recognition of Weight Lifting Exercises
+
+Velloso, E.; Bulling, A.; Gellersen, H.; Ugulino, W.; Fuks, H. Qualitative Activity 
+Recognition of Weight Lifting Exercises. Proceedings of 4th Augmented Human (AH) 
+International Conference in cooperation with ACM SIGCHI (Augmented Human'13) . 
+Stuttgart, Germany: ACM SIGCHI, 2013.
+
+http://groupware.les.inf.puc-rio.br/public/papers/2013.Velloso.QAR-WLE.pdf
+
+##### **Remark:**
+
+My notebook environment:
+OS: Windows 8.0, CPU: Intel Core i3-3227U (1.90GHz), RAM: 8GB
